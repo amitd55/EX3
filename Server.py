@@ -33,57 +33,46 @@ def process_request(client_socket, max_message_size: int) -> None:
         buffer = ""
         adjusted_max_size = max_message_size + 10  # Allow extra space for handling
 
-        try:
-            client_address = client_socket.getpeername()
-            print(f"[SERVER] Connection established with {client_address}")
+        while True:
+            data = client_socket.recv(adjusted_max_size)
+            if not data:
+                print(f"[SERVER] Client closed the connection.")
+                break
 
-            while True:
-                # Receive data from the client
-                data = client_socket.recv(adjusted_max_size)
-                if not data:
-                    print(f"[SERVER] Client at {client_address} closed the connection.")
-                    break
+            data = data.decode('utf-8')
+            buffer += data
+            print(f"[SERVER] Buffer updated: {repr(buffer)}")
 
-                # Decode the received data and add it to the buffer
-                data = data.decode('utf-8', errors='replace')
-                buffer += data
-                print(f"[SERVER] Buffer updated: {repr(buffer)}")
+            while "\n" in buffer:
+                message, buffer = buffer.split("\n", 1)
+                message = message.strip()
 
-                # Process complete messages in the buffer
-                while "\n" in buffer:
-                    # Split the buffer at the first newline
-                    message, buffer = buffer.split("\n", 1)
-                    message = message.strip()
+                if not message.startswith("M") or ":" not in message:
+                    print(f"[SERVER] Invalid message format: '{message}'")
+                    continue
 
-                    if not message.startswith("M") or ":" not in message:
-                        print(f"[SERVER] Invalid message format: '{message}'")
-                        continue
+                try:
+                    seq_num, content = message.split(":", 1)
+                    seq_num = int(seq_num[1:])
+                    content = content.strip()
+                    print(f"[Message] M{seq_num}: '{content}'")
 
-                    try:
-                        # Parse the sequence number and content
-                        seq_num, content = message.split(":", 1)
-                        seq_num = int(seq_num[1:])  # Extract the number after 'M'
-                        content = content.strip()
-                        print(f"    [Message] M{seq_num}: '{content}'")
+                    received[seq_num] = content
 
-                        received[seq_num] = content
-
-                        while expected_seq in received:
-                            print(f"    [Processing] M{expected_seq}: '{received[expected_seq]}'")
-                            expected_seq += 1
+                    while expected_seq in received:
+                        print(f"[Processing] M{expected_seq}: '{received[expected_seq]}'")
+                        expected_seq += 1
 
                         ack = f"ACK{expected_seq - 1}\n"
                         client_socket.send(ack.encode('utf-8'))
-                        print(f"    [ACK Sent] {ack.strip()}")
+                        print(f"[ACK Sent] {ack.strip()}")
 
-                    except (ValueError, IndexError) as e:
-                        print(f"[SERVER] Error processing message: '{message}', Error: {e}")
-                        continue
+                except (ValueError, IndexError) as e:
+                    print(f"[SERVER] Error processing message: '{message}', Error: {e}")
+                    continue
 
-        except ConnectionResetError:
-            print(f"[SERVER] Connection with {client_address} was reset by the client.")
-        except Exception as e:
-            print(f"[SERVER] Unexpected error: {e}")
+                except Exception as e:
+                    print(f"[SERVER] Unexpected error: {e}")
 
 
 
